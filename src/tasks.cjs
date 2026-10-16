@@ -17,7 +17,9 @@ function taskInput(input) {
   const price = Number(input.price), quantity = Number(input.quantity);
   if (!Number.isFinite(price) || price < 0.01 || price > 1000000) throw new Error('Enter a price limit between $0.01 and $1,000,000.');
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) throw new Error('Quantity must be 1–10.');
-  return { name, url: productURL(input.url), price, quantity, automatic: input.automatic === true };
+  return { name, url: productURL(input.url), price, quantity, automatic: input.automatic === true,
+    accountId: typeof input.accountId === 'string' ? input.accountId : '',
+    proxyId: typeof input.proxyId === 'string' ? input.proxyId : '' };
 }
 
 class TaskEngine {
@@ -50,6 +52,16 @@ class TaskEngine {
     const item = this.items.find(item => item.id === id);
     if (!item) throw new Error('Task no longer exists.');
     return item;
+  }
+  assign(id, assignment) {
+    const item = this.find(id);
+    if (this.jobs.has(id)) throw new Error('Stop this task before changing its assignments.');
+    Object.assign(item, assignment);
+    this.log(`Updated account/proxy assignments for ${item.name}. Configuration only; demo tasks do not use them.`);
+  }
+  clearReference(key, id) {
+    for (const item of this.items) if (item[key] === id) item[key] = '';
+    this.publish();
   }
   start(id) {
     const item = this.find(id);

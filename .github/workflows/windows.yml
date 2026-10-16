@@ -19,7 +19,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Orbit-Desktop-Windows
-          path: release/*.zip
+          path: |
+            release/*.zip
+            release/*Setup*.exe
       - name: Attach release downloads
         shell: pwsh
         env:
@@ -28,5 +30,8 @@ jobs:
         run: |
           $binary = Get-ChildItem release/*-win.zip | Select-Object -First 1
           Copy-Item $binary.FullName release/OrbitDesktop-Windows.zip
+          $installer = Get-ChildItem 'release/*Setup*.exe' | Select-Object -First 1
+          Copy-Item $installer.FullName release/OrbitDesktop-Setup.exe
+          $version = node -p 'require("./package.json").version'
           git archive --format=zip --prefix=OrbitDesktop/ --output=OrbitDesktop-source.zip HEAD
-          gh release upload v0.1.0 release/OrbitDesktop-Windows.zip OrbitDesktop-source.zip --clobber
+          gh release upload "v$version" release/OrbitDesktop-Windows.zip release/OrbitDesktop-Setup.exe OrbitDesktop-source.zip --clobber

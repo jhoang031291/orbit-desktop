@@ -1,19 +1,26 @@
-const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification, safeStorage } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { TaskEngine, productURL } = require('./tasks.cjs');
-let window, engine, saveQueue = Promise.resolve(), quitting = false;
+const { createNotifier } = require('./notifications.cjs');
+const { Vault, validateAssignment } = require('./vault.cjs');
+let window, engine, credentialVault, saveQueue = Promise.resolve(), quitting = false;
 const page = pathToFileURL(path.join(__dirname, 'index.html')).href;
 
 app.setAppUserModelId('com.orbitdesktop.app');
 app.whenReady().then(async () => {
   const file = path.join(app.getPath('userData'), 'tasks.json');
+  const vault = new Vault(path.join(app.getPath('userData'), 'credentials.enc'), safeStorage);
+  credentialVault = vault;
+  let vaultWarning;
+  try { await vault.load(); } catch (error) { vaultWarning = error.message; }
+  const publicState = (tasks = engine.snapshot()) => ({ ...tasks, ...vault.snapshot() });
   let snapshot = {}, loadError;
   try { snapshot = JSON.parse(await fs.readFile(file, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') loadError = 'Saved data could not be read. Existing file was preserved.'; }
   const changed = state => {
-    if (window && !window.isDestroyed()) window.webContents.send('state', state);
+    if (window && !window.isDestroyed()) window.webContents.send('state', publicState(state));
     if (loadError) return;
     saveQueue = saveQueue.then(async () => {
       await fs.mkdir(path.dirname(file), { recursive: true });
@@ -23,11 +30,20 @@ app.whenReady().then(async () => {
       if (window && !window.isDestroyed()) window.webContents.send('save-error', 'Changes could not be saved to disk.');
     });
   };
-  const notify = (title, body) => {
-    if (Notification.isSupported()) new Notification({ title, body }).show();
-  };
+  const { notify } = createNotifier({
+    Notification,
+    emit: alert => { if (window && !window.isDestroyed()) window.webContents.send('notification', alert); },
+    log: message => engine?.log(message)
+  });
   try { engine = new TaskEngine(snapshot, changed, notify); }
   catch { loadError = 'Saved data is invalid. Existing file was preserved; this session will not save.'; engine = new TaskEngine({}, changed, notify); }
+  if (!vaultWarning) {
+    const saved = vault.snapshot();
+    for (const item of engine.items) {
+      if (!saved.accounts.some(entry => entry.id === item.accountId && entry.retailer === 'Target')) item.accountId = '';
+      if (!saved.proxies.some(entry => entry.id === item.proxyId)) item.proxyId = '';
+    }
+  }
   window = new BrowserWindow({ width: 1280, height: 850, minWidth: 940, minHeight: 650,
     backgroundColor: '#101118', title: 'Orbit Desktop',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
@@ -38,15 +54,37 @@ app.whenReady().then(async () => {
     if (event.sender !== window.webContents || event.senderFrame?.url !== page) return { ok: false, error: 'Unauthorized frame.' };
     try {
       switch (command) {
-        case 'snapshot': return { ok: true, state: engine.snapshot(), warning: loadError };
-        case 'add': engine.add(data); break;
+        case 'snapshot': return { ok: true, state: publicState(), warning: [loadError, vaultWarning].filter(Boolean).join(' ') };
+        case 'add': engine.add({ ...data, ...validateAssignment(data, vault.snapshot()) }); break;
+        case 'assign': engine.assign(data.id, validateAssignment(data, vault.snapshot())); break;
+        case 'save-account':
+        case 'save-proxy': {
+          const kind = command === 'save-account' ? 'accounts' : 'proxies';
+          if (data?.id && engine.items.some(item => engine.jobs.has(item.id) && item[kind === 'accounts' ? 'accountId' : 'proxyId'] === data.id)) throw new Error('Stop tasks using this entry before editing it.');
+          if (kind === 'accounts' && data?.retailer !== 'Target' && engine.items.some(item => item.accountId === data?.id)) throw new Error('Unassign this account from Target tasks before changing its retailer.');
+          await vault.save(kind, data);
+          engine.log(kind === 'accounts' ? 'Saved retail account configuration. No retailer login was performed.' : 'Saved proxy configuration. Connection has not been tested.');
+          break;
+        }
+        case 'remove-account':
+        case 'remove-proxy': {
+          const kind = command === 'remove-account' ? 'accounts' : 'proxies';
+          const key = kind === 'accounts' ? 'accountId' : 'proxyId';
+          if (engine.items.some(item => engine.jobs.has(item.id) && item[key] === data)) throw new Error('Stop tasks using this entry before deleting it.');
+          await vault.remove(kind, data);
+          engine.clearReference(key, data);
+          engine.log(kind === 'accounts' ? 'Removed retail account configuration.' : 'Removed proxy configuration.');
+          break;
+        }
         case 'start': engine.start(data); break;
         case 'stop': engine.stop(data); break;
         case 'remove': engine.remove(data); break;
         case 'open': await shell.openExternal(productURL(engine.find(data).url)); break;
+        case 'test-notification': notify('Orbit Desktop test', 'This is a test alert. No stock was checked and no order was placed.'); break;
+        case 'notification-settings': await shell.openExternal('ms-settings:notifications'); break;
         default: throw new Error('Unknown command.');
       }
-      return { ok: true, state: engine.snapshot() };
+      return { ok: true, state: publicState() };
     } catch (error) { return { ok: false, error: error.message }; }
   });
   await window.loadFile(path.join(__dirname, 'index.html'));
@@ -57,5 +95,5 @@ app.on('before-quit', event => {
   event.preventDefault();
   quitting = true;
   engine?.close();
-  saveQueue.finally(() => app.quit());
+  Promise.resolve(credentialVault?.pending).then(() => saveQueue).finally(() => app.quit());
 });

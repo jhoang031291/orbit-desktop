@@ -1,7 +1,7 @@
 {
   "name": "orbit-desktop",
   "productName": "Orbit Desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Windows product task manager prototype",
   "author": "Orbit Desktop",
   "private": true,
@@ -9,14 +9,37 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.cjs",
-    "build:win": "electron-builder --win zip --x64"
+    "build:win": "electron-builder --win nsis zip --x64"
   },
-  "devDependencies": { "electron": "44.8.0", "electron-builder": "^26.0.12" },
+  "devDependencies": {
+    "electron": "44.8.0",
+    "electron-builder": "^26.0.12"
+  },
   "build": {
     "appId": "com.orbitdesktop.app",
     "asar": true,
-    "files": ["src/**/*", "package.json"],
-    "directories": { "output": "release" },
-    "win": { "target": "zip", "signAndEditExecutable": false }
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createStartMenuShortcut": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Orbit Desktop",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }
