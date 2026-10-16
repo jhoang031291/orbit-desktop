@@ -1,0 +1,32 @@
+name: Windows build
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Orbit-Desktop-Windows
+          path: release/*.zip
+      - name: Attach release downloads
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $binary = Get-ChildItem release/*-win.zip | Select-Object -First 1
+          Copy-Item $binary.FullName release/OrbitDesktop-Windows.zip
+          git archive --format=zip --prefix=OrbitDesktop/ --output=OrbitDesktop-source.zip HEAD
+          gh release upload v0.1.0 release/OrbitDesktop-Windows.zip OrbitDesktop-source.zip --clobber
