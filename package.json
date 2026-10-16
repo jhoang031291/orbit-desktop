@@ -1,0 +1,22 @@
+{
+  "name": "orbit-desktop",
+  "productName": "Orbit Desktop",
+  "version": "0.1.0",
+  "description": "Windows product task manager prototype",
+  "author": "Orbit Desktop",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "build:win": "electron-builder --win zip --x64"
+  },
+  "devDependencies": { "electron": "44.8.0", "electron-builder": "^26.0.12" },
+  "build": {
+    "appId": "com.orbitdesktop.app",
+    "asar": true,
+    "files": ["src/**/*", "package.json"],
+    "directories": { "output": "release" },
+    "win": { "target": "zip", "signAndEditExecutable": false }
+  }
+}

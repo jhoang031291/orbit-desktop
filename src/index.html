@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Orbit Desktop</title><link rel="stylesheet" href="styles.css"><script defer src="renderer.js"></script>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand"><span class="orb">◉</span> ORBIT<span class="version">DESKTOP</span></div>
+  <div class="nav-label">WORKSPACE</div>
+  <nav aria-label="Main"><button data-view="tasks" class="selected">▦ <span>Tasks</span></button><button data-view="activity">◷ <span>Activity</span></button><button data-view="settings">⚙ <span>Settings</span></button></nav>
+  <div class="sidebar-bottom"><span class="dot"></span> Local workspace<div>Windows · v0.1.0</div></div>
+</aside>
+<main>
+  <header><div class="breadcrumb">Workspace <span>/</span> <span id="page-label">Tasks</span></div><span class="badge">PROTOTYPE</span></header>
+  <div id="notice" role="alert" hidden></div>
+  <section id="tasks" class="view">
+    <div class="heading"><div><p class="eyebrow">YOUR NEXT DROP STARTS HERE</p><h1>Task manager</h1><p class="muted">Your products, limits, and task activity in one place.</p></div><button id="add" class="primary">＋ New task</button></div>
+    <div class="stats"><article><span>Total tasks</span><strong id="total">0</strong><small>Saved in this workspace</small></article><article><span>Running demos</span><strong id="running">0</strong><small>Simulated monitoring</small></article><article><span>Completed demos</span><strong id="complete">0</strong><small>No actual purchases</small></article></div>
+    <div class="demo-banner"><span>◇</span><div><strong>Build your workflow. Try it in demo mode.</strong><p>Stock and checkout are simulated. Target is not connected. No orders are placed.</p></div></div>
+    <div class="panel"><div class="panel-head"><h2>Product tasks <span id="count">0</span></h2><label class="search-label"><span class="sr-only">Search tasks</span><input id="search" type="search" placeholder="Search products…"></label></div>
+      <div class="table-wrap"><table><thead><tr><th>PRODUCT / STORE</th><th>LIMIT / QTY</th><th>MODE</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody id="task-rows"></tbody></table></div>
+      <div id="empty"><div class="empty-icon">▦</div><h3>Make room for your next find</h3><p>Add a Target product to try your first task.</p><button id="empty-add" class="secondary">Create your first task</button></div>
+    </div>
+    <footer><span class="dot"></span> Runs on this computer while the app is open and Windows is awake.</footer>
+  </section>
+  <section id="activity" class="view" hidden><p class="eyebrow">WORKSPACE HISTORY</p><h1>Activity</h1><p class="muted">The latest 200 task events. All purchase events are simulated.</p><div id="events" class="panel event-list"></div></section>
+  <section id="settings" class="view" hidden><p class="eyebrow">APPLICATION</p><h1>Settings</h1><div class="panel settings"><h2>Integration status</h2><p><strong>Target:</strong> demo only</p><p><strong>Discord:</strong> not connected in this new project</p><p><strong>Windows notifications:</strong> demo restock and checkout events request desktop notifications. Delivery depends on Windows notification settings and Do Not Disturb.</p><p>Tasks are stored locally under the app's user data folder. Active demos pause on exit. No accounts, passwords, cards, or retailer sessions are stored.</p><p>Live monitoring and checkout require a separate retailer integration. This app is independent of StellarAIO, ValorAIO, and Target.</p></div></section>
+</main>
+<dialog id="task-dialog"><form id="task-form"><div class="dialog-heading"><div><p class="eyebrow">TARGET · DEMO</p><h2>New product task</h2></div><button id="close-dialog" type="button" aria-label="Close">✕</button></div>
+<label>Product name<input name="name" required maxlength="120" placeholder="e.g. Collectible release"></label>
+<label>Target product URL<input name="url" type="url" required placeholder="https://www.target.com/p/…"></label>
+<div class="form-grid"><label>Maximum price (USD)<input name="price" type="number" required min="0.01" max="1000000" step="0.01" placeholder="49.99"></label><label>Quantity<input name="quantity" type="number" required min="1" max="10" step="1" value="1"></label></div>
+<label class="check"><input name="automatic" type="checkbox" checked> Simulate automatic checkout</label><p class="muted">Demo tasks generate simulated stock and checkout events. No actual purchase is made.</p><p id="form-error" role="alert"></p><button class="primary submit" type="submit">Create task</button>
+</form></dialog>
+</body></html>
