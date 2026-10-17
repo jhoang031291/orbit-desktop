@@ -2,10 +2,11 @@ const { app, BrowserWindow, ipcMain, shell, Notification, safeStorage } = requir
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { TaskEngine, productURL } = require('./tasks.cjs');
+const { TaskEngine, productURL, taskInput } = require('./tasks.cjs');
+const { sendDiscord } = require('./discord.cjs');
 const { createNotifier } = require('./notifications.cjs');
 const { Vault, validateAssignment } = require('./vault.cjs');
-let window, engine, credentialVault, saveQueue = Promise.resolve(), quitting = false;
+let window, engine, credentialVault, saveQueue = Promise.resolve(), discordQueue = Promise.resolve(), discordPending = 0, quitting = false;
 const page = pathToFileURL(path.join(__dirname, 'index.html')).href;
 
 app.setAppUserModelId('com.orbitdesktop.app');
@@ -35,12 +36,22 @@ app.whenReady().then(async () => {
     emit: alert => { if (window && !window.isDestroyed()) window.webContents.send('notification', alert); },
     log: message => engine?.log(message)
   });
-  try { engine = new TaskEngine(snapshot, changed, notify); }
-  catch { loadError = 'Saved data is invalid. Existing file was preserved; this session will not save.'; engine = new TaskEngine({}, changed, notify); }
+  const queueDiscord = event => {
+    if (quitting || !vault.data.discord.enabled || !vault.data.discord.sendDemos) return;
+    if (discordPending >= 20) { engine.log('Discord queue is full. Demo message skipped.'); return; }
+    discordPending++;
+    discordQueue = discordQueue.then(async () => {
+      if (quitting || !vault.data.discord.enabled || !vault.data.discord.sendDemos) return;
+      try { await sendDiscord(vault.data.discord, event); engine.log(`Discord ${event.kind}: demo message accepted.`); }
+      catch (error) { engine.log(`Discord ${event.kind}: ${error.message}`); }
+    }).finally(() => { discordPending--; });
+  };
+  try { engine = new TaskEngine(snapshot, changed, notify, undefined, queueDiscord); }
+  catch { loadError = 'Saved data is invalid. Existing file was preserved; this session will not save.'; engine = new TaskEngine({}, changed, notify, undefined, queueDiscord); }
   if (!vaultWarning) {
     const saved = vault.snapshot();
     for (const item of engine.items) {
-      if (!saved.accounts.some(entry => entry.id === item.accountId && entry.retailer === 'Target')) item.accountId = '';
+      if (!saved.accounts.some(entry => entry.id === item.accountId && entry.retailer === item.retailer)) item.accountId = '';
       if (!saved.proxies.some(entry => entry.id === item.proxyId)) item.proxyId = '';
     }
   }
@@ -55,13 +66,20 @@ app.whenReady().then(async () => {
     try {
       switch (command) {
         case 'snapshot': return { ok: true, state: publicState(), warning: [loadError, vaultWarning].filter(Boolean).join(' ') };
-        case 'add': engine.add({ ...data, ...validateAssignment(data, vault.snapshot()) }); break;
-        case 'assign': engine.assign(data.id, validateAssignment(data, vault.snapshot())); break;
+        case 'add': {
+          const item = taskInput(data);
+          engine.add({ ...item, ...validateAssignment(item, vault.snapshot(), item.retailer) }); break;
+        }
+        case 'assign': engine.assign(data.id, validateAssignment(data, vault.snapshot(), engine.find(data.id).retailer)); break;
+        case 'save-discord': await vault.saveDiscord(data); engine.log('Saved Discord notification settings.'); break;
+        case 'test-discord':
+          await sendDiscord(vault.data.discord, { kind: data, test: true });
+          engine.log(`Discord ${data}: test message accepted.`); break;
         case 'save-account':
         case 'save-proxy': {
           const kind = command === 'save-account' ? 'accounts' : 'proxies';
           if (data?.id && engine.items.some(item => engine.jobs.has(item.id) && item[kind === 'accounts' ? 'accountId' : 'proxyId'] === data.id)) throw new Error('Stop tasks using this entry before editing it.');
-          if (kind === 'accounts' && data?.retailer !== 'Target' && engine.items.some(item => item.accountId === data?.id)) throw new Error('Unassign this account from Target tasks before changing its retailer.');
+          if (kind === 'accounts' && engine.items.some(item => item.accountId === data?.id && item.retailer !== data.retailer)) throw new Error('Unassign this account from its tasks before changing its retailer.');
           await vault.save(kind, data);
           engine.log(kind === 'accounts' ? 'Saved retail account configuration. No retailer login was performed.' : 'Saved proxy configuration. Connection has not been tested.');
           break;
@@ -84,7 +102,7 @@ app.whenReady().then(async () => {
         case 'notification-settings': await shell.openExternal('ms-settings:notifications'); break;
         default: throw new Error('Unknown command.');
       }
-      return { ok: true, state: publicState() };
+      return { ok: true, state: publicState(), warning: [loadError, vaultWarning].filter(Boolean).join(' ') };
     } catch (error) { return { ok: false, error: error.message }; }
   });
   await window.loadFile(path.join(__dirname, 'index.html'));
@@ -95,5 +113,5 @@ app.on('before-quit', event => {
   event.preventDefault();
   quitting = true;
   engine?.close();
-  Promise.resolve(credentialVault?.pending).then(() => saveQueue).finally(() => app.quit());
+  Promise.resolve(discordQueue).then(() => credentialVault?.pending).then(() => saveQueue).finally(() => app.quit());
 });

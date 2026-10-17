@@ -2,7 +2,9 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { isIP } = require('node:net');
-const retailers = ['Target', 'Walmart', 'Best Buy', 'Amazon', 'Other'];
+const { RETAILERS, normalizeRetailer } = require('./retailers.cjs');
+const { discordSettings } = require('./discord.cjs');
+const retailers = [...RETAILERS, 'Other'];
 function field(value, name, max = 120, required = true) {
   if (typeof value !== 'string' || value.length > max || (required && !value.trim())) throw new Error(`Invalid ${name}.`);
   return value.trim();
@@ -14,8 +16,8 @@ function credential(input, previous = {}) {
   return input.password;
 }
 function accountInput(input, previous) {
-  if (!input || !retailers.includes(input.retailer)) throw new Error('Choose a retailer.');
-  return { label: field(input.label, 'account label'), retailer: input.retailer,
+  if (!input || !retailers.includes(normalizeRetailer(input.retailer))) throw new Error('Choose a retailer.');
+  return { label: field(input.label, 'account label'), retailer: normalizeRetailer(input.retailer),
     username: field(input.username, 'email or username', 254), password: credential(input, previous) };
 }
 function proxyInput(input, previous) {
@@ -32,7 +34,7 @@ function proxyInput(input, previous) {
 }
 class Vault {
   constructor(file, crypto) {
-    this.file = file; this.crypto = crypto; this.data = { accounts: [], proxies: [] }; this.locked = false;
+    this.file = file; this.crypto = crypto; this.data = { accounts: [], proxies: [], discord: discordSettings({}) }; this.locked = false;
     this.pending = Promise.resolve();
   }
   available() {
@@ -43,6 +45,8 @@ class Vault {
       const encrypted = await fs.readFile(this.file);
       if (!this.available()) throw new Error('Encryption unavailable');
       const data = JSON.parse(this.crypto.decryptString(encrypted));
+      data.discord = discordSettings(data.discord || {}, data.discord || {});
+      for (const key of ['alerts', 'checkouts']) if (data.discord[key]) data.discord[key] = require('./discord.cjs').webhookURL(data.discord[key]);
       if (!Array.isArray(data.accounts) || !Array.isArray(data.proxies) || data.accounts.length > 500 || data.proxies.length > 500) throw new Error('Invalid vault');
       for (const [kind, validate] of [['accounts', accountInput], ['proxies', proxyInput]]) {
         const ids = new Set();
@@ -62,7 +66,10 @@ class Vault {
   }
   snapshot() {
     const redact = ({ password, ...entry }) => ({ ...entry, hasPassword: Boolean(password) });
-    return { accounts: this.data.accounts.map(redact), proxies: this.data.proxies.map(redact) };
+    return { accounts: this.data.accounts.map(redact), proxies: this.data.proxies.map(redact), discord: {
+      enabled: this.data.discord.enabled, sendDemos: this.data.discord.sendDemos,
+      alertsConfigured: Boolean(this.data.discord.alerts), checkoutsConfigured: Boolean(this.data.discord.checkouts)
+    } };
   }
   mutate(operation) {
     const result = this.pending.then(async () => {
@@ -97,11 +104,12 @@ class Vault {
       data[kind] = data[kind].filter(entry => entry.id !== id);
     });
   }
+  saveDiscord(input) { return this.mutate(data => { data.discord = discordSettings(input, data.discord); }); }
 }
-function validateAssignment(input, vault) {
+function validateAssignment(input, vault, retailer = 'Target') {
   const accountId = typeof input.accountId === 'string' ? input.accountId : '';
   const proxyId = typeof input.proxyId === 'string' ? input.proxyId : '';
-  if (accountId && !vault.accounts.some(entry => entry.id === accountId && entry.retailer === 'Target')) throw new Error('Choose a saved Target account.');
+  if (accountId && !vault.accounts.some(entry => entry.id === accountId && entry.retailer === retailer)) throw new Error(`Choose a saved ${retailer} account.`);
   if (proxyId && !vault.proxies.some(entry => entry.id === proxyId)) throw new Error('Choose a saved proxy.');
   return { accountId, proxyId };
 }

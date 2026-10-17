@@ -1,5 +1,7 @@
 const $ = id => document.getElementById(id);
-let state = { items: [], events: [], accounts: [], proxies: [] };
+let state = { items: [], events: [], accounts: [], proxies: [], discord: {} };
+let assigningRetailer = 'Target', discordDirty = false;
+const discordTests = new Set();
 const labels = { ready: 'Ready', paused: 'Paused', watching: 'Watching · demo', checking: 'Checkout · demo', complete: 'Complete · demo' };
 function text(tag, value, className) {
   const element = document.createElement(tag);
@@ -17,7 +19,7 @@ function render() {
   $('empty').hidden = state.items.length > 0;
   for (const item of items) {
     const row = document.createElement('tr');
-    const product = text('td', item.name); product.append(text('small', 'TARGET · Product task'));
+    const product = text('td', item.name); product.append(text('small', `${item.retailer.toUpperCase()} · Product task`));
     const account = state.accounts.find(entry => entry.id === item.accountId);
     const proxy = state.proxies.find(entry => entry.id === item.proxyId);
     const summary = `Account: ${account?.label || 'None'} · Proxy: ${proxy?.label || 'Direct'}`;
@@ -37,6 +39,7 @@ function render() {
     assign.disabled = active; assign.setAttribute('aria-label', `Assign account and proxy: ${item.name}`);
     assign.onclick = () => {
       const form = $('assignment-form'); form.elements.id.value = item.id;
+      assigningRetailer = item.retailer; renderResources();
       $('assign-account').value = item.accountId || ''; $('assign-proxy').value = item.proxyId || '';
       $('assignment-dialog').showModal();
     };
@@ -72,7 +75,7 @@ for (const button of document.querySelectorAll('[data-view]')) {
     $('page-label').textContent = button.textContent.trim();
   };
 }
-function addDialog() { $('form-error').textContent = ''; $('task-dialog').showModal(); }
+function addDialog() { $('form-error').textContent = ''; renderResources(); $('task-dialog').showModal(); }
 $('add').onclick = addDialog;
 $('empty-add').onclick = addDialog;
 $('close-dialog').onclick = () => $('task-dialog').close();
@@ -128,9 +131,18 @@ function renderResources() {
       group.append(edit, remove); actions.append(group); row.append(label, detail, credential, actions); rows.append(row);
     }
   }
-  const targetAccounts = state.accounts.filter(entry => entry.retailer === 'Target');
-  for (const id of ['task-account', 'assign-account']) fillSelect(id, targetAccounts, 'No account');
+  fillSelect('task-account', state.accounts.filter(entry => entry.retailer === $('task-retailer').value), 'No account');
+  fillSelect('assign-account', state.accounts.filter(entry => entry.retailer === assigningRetailer), 'No account');
   for (const id of ['task-proxy', 'assign-proxy']) fillSelect(id, state.proxies, 'Direct / no proxy');
+  const discord = state.discord || {};
+  $('alerts-status').textContent = discord.alertsConfigured ? 'Saved · hidden' : 'Not configured';
+  $('checkouts-status').textContent = discord.checkoutsConfigured ? 'Saved · hidden' : 'Not configured';
+  $('test-alerts').disabled = !discord.alertsConfigured || discordTests.has('alerts');
+  $('test-checkouts').disabled = !discord.checkoutsConfigured || discordTests.has('checkouts');
+  if (!discordDirty) {
+    $('discord-enabled').checked = Boolean(discord.enabled);
+    $('discord-demos').checked = Boolean(discord.sendDemos);
+  }
 }
 function resourceDialog(kind, entry) {
   const form = $(`${kind}-form`); form.reset();
@@ -168,3 +180,30 @@ function dialogError(form) {
   const message = text('p', $('notice').textContent, 'dialog-error'); message.setAttribute('role', 'alert');
   form.insertBefore(message, form.querySelector('[type=submit]'));
 }
+$('task-retailer').onchange = () => {
+  const examples = { Target: 'https://www.target.com/p/…', 'Best Buy US': 'https://www.bestbuy.com/site/name/12345.p', Amazon: 'https://www.amazon.com/dp/B000000001', Walmart: 'https://www.walmart.com/ip/name/12345' };
+  $('task-form').elements.url.placeholder = examples[$('task-retailer').value];
+  renderResources();
+};
+$('discord-form').oninput = () => { discordDirty = true; };
+$('discord-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = new FormData(event.target), input = Object.fromEntries(form);
+  for (const key of ['enabled', 'sendDemos', 'clearalerts', 'clearcheckouts']) input[key] = form.has(key);
+  const button = event.target.querySelector('[type=submit]'); button.disabled = true;
+  $('discord-error').textContent = ''; $('discord-result').textContent = '';
+  if (await execute('save-discord', input)) {
+    event.target.reset(); discordDirty = false; renderResources();
+    $('discord-result').textContent = 'Settings saved.';
+  } else $('discord-error').textContent = $('notice').textContent;
+  button.disabled = false;
+};
+for (const kind of ['alerts', 'checkouts']) $('test-' + kind).onclick = async () => {
+  discordTests.add(kind);
+  const button = $('test-' + kind); button.disabled = true;
+  $('discord-result').textContent = 'Sending test…'; $('discord-error').textContent = '';
+  const ok = await execute('test-discord', kind);
+  $('discord-result').textContent = ok ? `Discord accepted the ${kind} test message.` : '';
+  if (!ok) $('discord-error').textContent = $('notice').textContent;
+  discordTests.delete(kind); button.disabled = false;
+};

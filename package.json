@@ -1,7 +1,7 @@
 {
   "name": "orbit-desktop",
   "productName": "Orbit Desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Windows product task manager prototype",
   "author": "Orbit Desktop",
   "private": true,

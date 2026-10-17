@@ -1,13 +1,8 @@
 const { randomUUID } = require('node:crypto');
+const { product } = require('./retailers.cjs');
 
 function productURL(input) {
-  let url;
-  try { url = new URL(input); } catch { throw new Error('Enter a valid Target product URL.'); }
-  if (url.protocol !== 'https:' || !['target.com', 'www.target.com'].includes(url.hostname)
-      || url.username || url.password || url.port || !url.pathname.startsWith('/p/')) {
-    throw new Error('Use an HTTPS Target product link starting with /p/.');
-  }
-  return url.href;
+  return product(input).url;
 }
 
 function taskInput(input) {
@@ -17,16 +12,17 @@ function taskInput(input) {
   const price = Number(input.price), quantity = Number(input.quantity);
   if (!Number.isFinite(price) || price < 0.01 || price > 1000000) throw new Error('Enter a price limit between $0.01 and $1,000,000.');
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) throw new Error('Quantity must be 1–10.');
-  return { name, url: productURL(input.url), price, quantity, automatic: input.automatic === true,
+  return { name, ...product(input.url, input.retailer), price, quantity, automatic: input.automatic === true,
     accountId: typeof input.accountId === 'string' ? input.accountId : '',
     proxyId: typeof input.proxyId === 'string' ? input.proxyId : '' };
 }
 
 class TaskEngine {
-  constructor(snapshot = {}, changed = () => {}, notify = () => {}, timers = { setTimeout, clearTimeout }) {
+  constructor(snapshot = {}, changed = () => {}, notify = () => {}, timers = { setTimeout, clearTimeout }, onEvent = () => {}) {
     this.changed = changed;
     this.notify = notify;
     this.timers = timers;
+    this.onEvent = onEvent;
     this.jobs = new Map();
     this.items = (Array.isArray(snapshot.items) ? snapshot.items : []).slice(0, 500).map(item => ({
       ...taskInput(item), id: typeof item.id === 'string' ? item.id : randomUUID(),
@@ -67,11 +63,12 @@ class TaskEngine {
     const item = this.find(id);
     if (this.jobs.has(id)) return;
     item.state = 'watching';
-    this.log(`Demo monitoring started: ${item.name}. No request sent to Target.`);
+    this.log(`Demo monitoring started: ${item.name}. No request sent to ${item.retailer}.`);
     const handle = this.timers.setTimeout(() => {
       this.jobs.delete(id);
       this.log(`DEMO restock: ${item.name}. Actual availability is unknown.`);
       this.notify('Demo restock', `${item.name} — simulated availability only.`);
+      this.onEvent({ kind: 'alerts', item: structuredClone(item) });
       if (item.automatic) {
         item.state = 'checking';
         this.publish();
@@ -80,6 +77,7 @@ class TaskEngine {
           item.state = 'complete';
           this.log(`DEMO checkout completed: ${item.name}. No purchase was made.`);
           this.notify('Demo checkout', `${item.name} — no purchase was made.`);
+          this.onEvent({ kind: 'checkouts', item: structuredClone(item) });
         }, 2000);
         this.jobs.set(id, checkout);
       } else { item.state = 'ready'; this.publish(); }

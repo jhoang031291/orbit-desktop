@@ -94,3 +94,15 @@ test('task assignments persist and deletion clears references; running tasks can
   engine.stop(id); engine.clearReference('accountId', 'account'); assert.equal(engine.find(id).accountId, '');
   engine.assign(id, { accountId: '', proxyId: '' }); assert.equal(engine.find(id).proxyId, '');
 });
+test('Discord webhooks stay encrypted and are never returned in snapshots', async t => {
+  const vault = await fixture(t);
+  const alerts = 'https://discord.com/api/webhooks/123456/fake_secret_alert_token';
+  await vault.saveDiscord({ alerts, enabled: true, sendDemos: true });
+  assert(!JSON.stringify(vault.snapshot()).includes('fake_secret_alert_token'));
+  assert(!(await fs.readFile(vault.file)).includes(Buffer.from(alerts)));
+  const reload = new Vault(vault.file, vault.crypto); await reload.load();
+  assert.equal(reload.snapshot().discord.alertsConfigured, true);
+  assert.equal(reload.snapshot().discord.sendDemos, true);
+  await reload.saveDiscord({ alerts: '', enabled: true }); assert.equal(reload.data.discord.alerts, alerts);
+  await reload.saveDiscord({ clearalerts: true }); assert.equal(reload.snapshot().discord.alertsConfigured, false);
+});
