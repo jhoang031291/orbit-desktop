@@ -5,3 +5,5 @@
 select{font:inherit;background:#11131c;color:#ecebf4;border:1px solid #343644;border-radius:6px;padding:10px 12px;width:100%;display:block;margin-top:9px}select:focus-visible{outline:2px solid #b0a0ff;outline-offset:3px}.resource-empty{padding:40px;text-align:center;color:#9296ad;font-size:13px}.assignment-summary{max-width:220px;overflow:hidden;text-overflow:ellipsis}dialog{max-height:90vh;overflow-y:auto}#notice{position:sticky;top:0;z-index:1100}
 
 #discord-form{max-width:650px}#discord-form>label:not(.check){display:block;margin-top:18px;font-size:12px}#discord-form>label input{margin-top:9px}#discord-error,.dialog-error{color:#ff9aab;font-size:12px}.discord-tests{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:24px 0}#discord-result{font-size:12px;color:#9fd6ba}#discord-form>label span{font-size:11px;margin-left:8px}
+
+.live-controls{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.live-controls button{font-size:12px}#live-error{color:#ff9aab}#live-status{color:#c8b7fa}#live-observation{white-space:pre-line}

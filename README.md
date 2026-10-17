@@ -1,64 +1,48 @@
 # Orbit Desktop for Windows
 
-A fresh Electron desktop prototype inspired by the task-management workflow of AIO tools. Independent of StellarAIO, ValorAIO, and Target. The selected retailers are Best Buy US, Amazon US, Target, and Walmart US.
+A Windows Electron task manager with account/proxy management, Discord webhooks, demo tasks for four US retailers, and a Target Playwright integration preview. Independent of Target, StellarAIO, and ValorAIO.
 
-## Retailer tasks and Discord (v0.3.0)
+## Target Playwright preview (v0.4.0)
 
-The task form now supports US product links from Best Buy US, Amazon US, Target, and Walmart US. Choose a retailer, paste its full product link, and select an account for that same retailer. Existing Target tasks and Best Buy account entries are migrated when loaded. These are demo tasks, not live retailer integrations.
+**This is not verified end-to-end automatic checkout.** The integration opens an isolated, visible Microsoft Edge browser; you sign in on Target yourself, save encrypted browser state, and inspect or monitor the exact product. Purchase review returns you to the product in that browser. You add products and complete checkout manually. Orbit does not add items, submit payment, verify orders, or report a purchase as successful.
 
-### Connect Discord
+### Set up on Windows
 
-1. In your Discord server, open the alerts channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL. Repeat for a separate checkout channel. Managing webhooks requires the corresponding Discord permission.
-2. In Orbit Desktop, open **Discord** in the sidebar. Paste the two URLs and save settings. Webhooks are encrypted in the local vault and never returned to the renderer. Blank edits preserve a saved value; the remove checkboxes delete it.
-3. Click **Send test to Alerts** and **Send test to Checkouts**. These explicitly send TEST messages even if automatic notifications are disabled. Check the channel and Activity for results.
-4. To send demo task events, enable both **Enable Discord event notifications** and **Send demo events**, then save. These messages are clearly labeled DEMO, show the retailer/product/price limit, and do not include account credentials or proxy details.
+1. Install or update Microsoft Edge. The application uses Playwright's `msedge` channel; it does not download a separate browser or attach to your everyday browser profile.
+2. Close the old app and run `OrbitDesktop-Setup.exe`. Launch Orbit Desktop from the Start menu. Existing records remain under the same Windows user.
+3. Under Accounts, save a Target entry. Its label/username identifies your configuration; the stored password is not autofilled.
+4. Create a Target task with the full product URL containing `/A-<TCIN>`, the exact variant, a price limit, an account, and a proxy or Direct.
+5. Open **Target Live**, select that account and the same proxy, and click Open Target browser. Sign in and complete any verification in the actual Target browser, then return and Save session. Saving state does not independently verify sign-in or which retail account you used.
+6. Select the assigned task and Check product now. Inspect the visible browser and observation result. Availability requires matching structured Product data, USD price for limit checks, and a recognized enabled shipping/add-to-cart control. Missing, conflicting, variant-mismatched, or blocked pages produce unknown/blocked rather than guessed availability.
+7. Monitor every 60 seconds starts repeated checks while the app/computer stay running. Stop before changing fulfillment, signing in, editing records, or opening purchase review. A blocked page or navigation failure stops monitoring for attention in the browser.
+8. Review purchase in browser requires observed availability and a current product price within your limit. It focuses the product page only. Check quantity, fulfillment, shipping, tax, payment, cart contents, and final total yourself. No order is submitted by Orbit.
 
-The app uses the desktop's normal network connection for Discord, not assigned task proxies. Delivery is best-effort while the app is open: a serial, in-memory queue holds at most 20 waiting/in-flight demo events, uses a 10-second request timeout, and does not retry errors or Discord rate limits automatically. Closing the app skips waiting events; a message already in flight may still be accepted. Check Activity for delivery outcomes. Discord accepting a message does not guarantee a phone notification. New installs default to notifications off and demo event sending off. No webhooks from the old project are preconfigured.
+Target markup changes can make page reading unavailable. Store-specific pickup and variant selection are not independently verified. No Target account login, real stock, cart, or checkout flow has been validated in development; browser tests use intercepted local fixtures. The product URL and a user-run session test are still needed for live validation. Other retailers remain demo/configuration only. The task manager's Run demo remains separate from Target Live.
 
-## Accounts and proxies
+### Sessions and proxies
 
-- Add, edit, and delete retail accounts for Target, Walmart, Best Buy, Amazon, or Other. Multiple entries per retailer are supported.
-- Save HTTP, HTTPS, or SOCKS5 proxy host/port and optional credentials. Entries are not connection-tested.
-- Assign an account for the selected retailer and a proxy to a new task, or use Assign on an existing stopped task. Accounts for a different retailer cannot be assigned.
-- Password fields never show saved values. Leave a password blank while editing to retain it, or select Clear saved password.
-- All account/proxy records are encrypted at rest using Electron safeStorage (Windows DPAPI). Passwords are not returned to the renderer or written into task history. Secure storage availability is required; there is no plaintext fallback. The vault is bound to the Windows user/computer and cannot be restored under another user.
-- Deleting an entry clears task assignments. Stop dependent tasks before editing or deleting an entry.
+Target cookies/local-storage state is saved only when requested, encrypted locally with Electron safeStorage / Windows DPAPI, and never returned to the renderer. Only Target-domain state is retained. Browser state cannot move to another Windows user/computer, may expire, and does not include IndexedDB or sessionStorage. The live browser has its own temporary profile; close it after use. Forget saved session closes it and deletes local saved state; it does not revoke sessions on Target's servers.
 
-**Assignments are configuration only. No account login, retailer session, or proxy traffic routing is implemented. The Open button launches the normal browser without the selected account or proxy.**
+Each account uses a separate browser. Proxy credentials remain in the desktop process. HTTP/HTTPS and unauthenticated SOCKS5 may be configured; Chromium does not support authenticated SOCKS5. Close/reopen the browser to change its proxy. Task and browser proxies must match. The normal Open button and Discord do not use assigned proxies. No anti-bot evasion or verification bypass is implemented.
 
-## Current features
+## Discord
 
-Task dashboard with search, product link validation, price/quantity limits, start/stop/delete controls, local persistence, activity history, native notification tests, and visible in-app alerts. Windows notification failures are recorded in Activity. Secure renderer uses a sandbox, context isolation, a restrictive content policy, and a narrow validated IPC interface.
+In Discord channel settings, open Integrations → Webhooks → New Webhook → Copy Webhook URL. Repeat for a separate checkout channel. Save both URLs in Orbit's Discord section. They are encrypted and hidden after saving; blank edits retain them, and remove checkboxes delete them. Test buttons explicitly post TEST messages, including when automatic event notifications are disabled.
 
-**Monitoring and checkout are simulated. No stock requests, account sign-ins, payment handling, or purchases are implemented.** Discord webhook delivery is configurable in this version; credentials from the scrapped iOS project are not included or reused. Tasks run locally while the app is open and Windows is awake. Closing it cancels active demo timers.
+Enable Discord event notifications to send Target availability observations and purchase-review messages. Those are not order confirmations. Enable Send demo events separately to post clearly labeled simulated task messages. No webhooks from previous projects are preconfigured.
 
-## Run on Windows 10/11 x64
+Delivery uses the ordinary desktop network, a bounded in-memory queue, a 10-second timeout, and no automatic retries. Waiting messages are skipped on app exit; in-flight messages may complete. Discord accepting a message does not guarantee a phone notification. Check Activity for accepted/failed delivery.
 
-If you have the prebuilt `Orbit Desktop-0.1.0-win.zip`, extract **all** files into a folder and launch `Orbit Desktop.exe`. No Node.js installation is needed for the prebuilt application. It is unsigned and has not been run on Windows in this Linux build environment.
+## Accounts and demo tasks
 
-For development from source:
+Save multiple accounts for Best Buy US, Amazon US, Target, Walmart US, or Other, and HTTP/HTTPS/SOCKS5 proxy configurations. Saved passwords never display again: blank edits retain them and Clear saved password removes them. Assign accounts only to their corresponding retailer's tasks. Account/proxy records are encrypted locally with no plaintext fallback. Close dependent Target browsers before editing/deleting entries. Deleting an account also deletes its saved Target browser state.
 
-The recommended download is now `OrbitDesktop-Setup.exe`; it creates the Windows shortcuts used for desktop notification registration. Close the existing app before installing and launch from the Start menu afterward. Existing task data is preserved under the same Windows user. The ZIP remains available.
+The four-retailer demo task manager has search, limits, start/stop/delete, task assignments, activity history, and native/in-app notifications. Demo tasks do not check stock, use retailer sessions/proxies, or make purchases. Existing Target tasks and legacy Best Buy account labels load compatibly.
 
-Install current Node.js LTS, open PowerShell in this folder, then run:
+## Development
 
-```powershell
-npm ci
-npm start
-```
+Install current Node.js LTS, then run `npm ci` and `npm start`. Build the Windows installer and ZIP with `npm run build:win`. The app is unsigned. The ZIP must be extracted in full, with all files kept together.
 
-Create a Windows installer and ZIP:
+`npm test` runs unit tests. `npm run test:target-browser` runs Playwright fixture and UI tests using installed Edge on Windows. For Linux development with an installed Chromium, set `ORBIT_TEST_CHROMIUM` to its executable path. Tests intercept Target requests and do not sign in, post Discord messages, add cart items, or purchase anything. Windows CI runs both sets and checks that the packaged application includes its unpacked Playwright runtime. Windows credential protection and authenticated Target behavior need manual device validation.
 
-```powershell
-npm run build:win
-```
-
-Extract the resulting ZIP in `release` and run `Orbit Desktop.exe`. Keep the full extracted folder together. The app is not code-signed; Windows may show a publisher warning. Signing requires a publisher certificate and a Windows release workflow.
-
-## Validation
-
-`npm test` runs dependency-free Node tests for URL/limit validation, task sequencing, cancellation, alerts-only behavior, restart handling, notification failures, encrypted vault persistence, credential redaction, password edits, and task assignments. Discord tests use mocked requests and send no real messages. Vault tests use an injected AES-GCM adapter; Windows DPAPI behavior still needs manual device validation. Desktop rendering, notification delivery, and Windows runtime operation require testing on Windows. Build artifacts are supplied only if successfully produced; source alone is not a Windows executable.
-
-Demo restock occurs after 3 seconds and simulated checkout 2 seconds later. The entered price is a limit, not an observed market price. Tasks are stored in Electron's user data directory (`%APPDATA%/Orbit Desktop` or the package-derived app name). No background server or hosting is required for this prototype.
-
-The included GitHub Actions Windows build workflow runs manually or for version tags after you upload the source to your own repository. The project is published at https://github.com/jhoang031291/orbit-desktop.
+Source and releases: https://github.com/jhoang031291/orbit-desktop

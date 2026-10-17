@@ -4,9 +4,10 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { TaskEngine, productURL, taskInput } = require('./tasks.cjs');
 const { sendDiscord } = require('./discord.cjs');
+const { TargetBrowser } = require('./target-browser.cjs');
 const { createNotifier } = require('./notifications.cjs');
 const { Vault, validateAssignment } = require('./vault.cjs');
-let window, engine, credentialVault, saveQueue = Promise.resolve(), discordQueue = Promise.resolve(), discordPending = 0, quitting = false;
+let window, engine, credentialVault, targetRuntime, saveQueue = Promise.resolve(), discordQueue = Promise.resolve(), discordPending = 0, quitting = false;
 const page = pathToFileURL(path.join(__dirname, 'index.html')).href;
 
 app.setAppUserModelId('com.orbitdesktop.app');
@@ -16,7 +17,7 @@ app.whenReady().then(async () => {
   credentialVault = vault;
   let vaultWarning;
   try { await vault.load(); } catch (error) { vaultWarning = error.message; }
-  const publicState = (tasks = engine.snapshot()) => ({ ...tasks, ...vault.snapshot() });
+  const publicState = (tasks = engine.snapshot()) => ({ ...tasks, ...vault.snapshot(), targetBrowsers: targetRuntime?.snapshot() || [] });
   let snapshot = {}, loadError;
   try { snapshot = JSON.parse(await fs.readFile(file, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') loadError = 'Saved data could not be read. Existing file was preserved.'; }
@@ -37,17 +38,23 @@ app.whenReady().then(async () => {
     log: message => engine?.log(message)
   });
   const queueDiscord = event => {
-    if (quitting || !vault.data.discord.enabled || !vault.data.discord.sendDemos) return;
+    if (quitting || !vault.data.discord.enabled || !event.live && !vault.data.discord.sendDemos) return;
     if (discordPending >= 20) { engine.log('Discord queue is full. Demo message skipped.'); return; }
     discordPending++;
     discordQueue = discordQueue.then(async () => {
-      if (quitting || !vault.data.discord.enabled || !vault.data.discord.sendDemos) return;
-      try { await sendDiscord(vault.data.discord, event); engine.log(`Discord ${event.kind}: demo message accepted.`); }
+      if (quitting || !vault.data.discord.enabled || !event.live && !vault.data.discord.sendDemos) return;
+      try { await sendDiscord(vault.data.discord, event); engine.log(`Discord ${event.kind}: ${event.live ? 'Target' : 'demo'} message accepted.`); }
       catch (error) { engine.log(`Discord ${event.kind}: ${error.message}`); }
     }).finally(() => { discordPending--; });
   };
   try { engine = new TaskEngine(snapshot, changed, notify, undefined, queueDiscord); }
   catch { loadError = 'Saved data is invalid. Existing file was preserved; this session will not save.'; engine = new TaskEngine({}, changed, notify, undefined, queueDiscord); }
+  targetRuntime = new TargetBrowser({ vault, update: () => { if (window && !window.isDestroyed()) window.webContents.send('state', publicState()); },
+    log: message => engine.log(message), onEvent: event => {
+      notify(event.kind === 'alerts' ? 'Target availability observed' : 'Target checkout review', `${event.item.name} — ${event.kind === 'alerts' ? 'Check fulfillment in the Target browser.' : 'No order submitted by Orbit.'}`);
+      queueDiscord(event);
+    }
+  });
   if (!vaultWarning) {
     const saved = vault.snapshot();
     for (const item of engine.items) {
@@ -64,7 +71,19 @@ app.whenReady().then(async () => {
   ipcMain.handle('command', async (event, command, data) => {
     if (event.sender !== window.webContents || event.senderFrame?.url !== page) return { ok: false, error: 'Unauthorized frame.' };
     try {
+      if (['assign', 'remove'].includes(command)) {
+        const id = command === 'assign' ? data.id : data;
+        if ([...targetRuntime.sessions.values()].some(s => s.taskId === id && (s.timer || s.busy))) throw new Error('Stop the Target live monitor before changing this task.');
+      }
       switch (command) {
+        case 'target-open': await targetRuntime.open(data.accountId, data.proxyId || ''); break;
+        case 'target-save-session': await targetRuntime.saveSession(data); break;
+        case 'target-close': await targetRuntime.close(data); break;
+        case 'target-clear-session': await targetRuntime.close(data); await vault.saveTargetSession(data, null); break;
+        case 'target-check': await targetRuntime.check(data.accountId, engine.find(data.taskId)); break;
+        case 'target-monitor': targetRuntime.start(data.accountId, engine.find(data.taskId)); break;
+        case 'target-stop': await targetRuntime.stop(data); break;
+        case 'target-checkout': await targetRuntime.checkout(data.accountId, engine.find(data.taskId)); break;
         case 'snapshot': return { ok: true, state: publicState(), warning: [loadError, vaultWarning].filter(Boolean).join(' ') };
         case 'add': {
           const item = taskInput(data);
@@ -78,6 +97,7 @@ app.whenReady().then(async () => {
         case 'save-account':
         case 'save-proxy': {
           const kind = command === 'save-account' ? 'accounts' : 'proxies';
+          if (kind === 'accounts' && targetRuntime.sessions.has(data?.id) || kind === 'proxies' && [...targetRuntime.sessions.values()].some(s => s.proxyId === data?.id)) throw new Error('Close Target browsers using this entry before editing it.');
           if (data?.id && engine.items.some(item => engine.jobs.has(item.id) && item[kind === 'accounts' ? 'accountId' : 'proxyId'] === data.id)) throw new Error('Stop tasks using this entry before editing it.');
           if (kind === 'accounts' && engine.items.some(item => item.accountId === data?.id && item.retailer !== data.retailer)) throw new Error('Unassign this account from its tasks before changing its retailer.');
           await vault.save(kind, data);
@@ -87,6 +107,7 @@ app.whenReady().then(async () => {
         case 'remove-account':
         case 'remove-proxy': {
           const kind = command === 'remove-account' ? 'accounts' : 'proxies';
+          if (kind === 'accounts' && targetRuntime.sessions.has(data) || kind === 'proxies' && [...targetRuntime.sessions.values()].some(s => s.proxyId === data)) throw new Error('Close Target browsers using this entry before deleting it.');
           const key = kind === 'accounts' ? 'accountId' : 'proxyId';
           if (engine.items.some(item => engine.jobs.has(item.id) && item[key] === data)) throw new Error('Stop tasks using this entry before deleting it.');
           await vault.remove(kind, data);
@@ -113,5 +134,5 @@ app.on('before-quit', event => {
   event.preventDefault();
   quitting = true;
   engine?.close();
-  Promise.resolve(discordQueue).then(() => credentialVault?.pending).then(() => saveQueue).finally(() => app.quit());
+  Promise.resolve(targetRuntime?.closeAll()).then(() => discordQueue).then(() => credentialVault?.pending).then(() => saveQueue).finally(() => app.quit());
 });

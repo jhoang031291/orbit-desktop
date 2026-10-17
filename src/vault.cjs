@@ -5,6 +5,16 @@ const { isIP } = require('node:net');
 const { RETAILERS, normalizeRetailer } = require('./retailers.cjs');
 const { discordSettings } = require('./discord.cjs');
 const retailers = [...RETAILERS, 'Other'];
+function targetState(state) {
+  if (!state || !Array.isArray(state.cookies) || !Array.isArray(state.origins) || JSON.stringify(state).length > 2000000) throw new Error('Invalid browser session state.');
+  const trustedHost = host => host === 'target.com' || host.endsWith('.target.com');
+  return {
+    cookies: state.cookies.filter(cookie => typeof cookie.domain === 'string' && trustedHost(cookie.domain.replace(/^\./, ''))),
+    origins: state.origins.filter(origin => {
+      try { const url = new URL(origin.origin); return url.protocol === 'https:' && trustedHost(url.hostname) && !url.username && !url.password; } catch { return false; }
+    })
+  };
+}
 function field(value, name, max = 120, required = true) {
   if (typeof value !== 'string' || value.length > max || (required && !value.trim())) throw new Error(`Invalid ${name}.`);
   return value.trim();
@@ -34,7 +44,7 @@ function proxyInput(input, previous) {
 }
 class Vault {
   constructor(file, crypto) {
-    this.file = file; this.crypto = crypto; this.data = { accounts: [], proxies: [], discord: discordSettings({}) }; this.locked = false;
+    this.file = file; this.crypto = crypto; this.data = { accounts: [], proxies: [], discord: discordSettings({}), targetSessions: {} }; this.locked = false;
     this.pending = Promise.resolve();
   }
   available() {
@@ -57,6 +67,7 @@ class Vault {
           return { ...validate(entry), id };
         });
       }
+      data.targetSessions = Object.fromEntries(Object.entries(data.targetSessions || {}).filter(([id]) => data.accounts.some(a => a.id === id && a.retailer === 'Target')).map(([id, state]) => [id, targetState(state)]));
       this.data = data;
     } catch (error) {
       if (error.code === 'ENOENT') return;
@@ -66,7 +77,7 @@ class Vault {
   }
   snapshot() {
     const redact = ({ password, ...entry }) => ({ ...entry, hasPassword: Boolean(password) });
-    return { accounts: this.data.accounts.map(redact), proxies: this.data.proxies.map(redact), discord: {
+    return { accounts: this.data.accounts.map(entry => ({ ...redact(entry), hasTargetSession: Boolean(this.data.targetSessions[entry.id]) })), proxies: this.data.proxies.map(redact), discord: {
       enabled: this.data.discord.enabled, sendDemos: this.data.discord.sendDemos,
       alertsConfigured: Boolean(this.data.discord.alerts), checkoutsConfigured: Boolean(this.data.discord.checkouts)
     } };
@@ -93,6 +104,7 @@ class Vault {
       if (!existing && data[kind].length >= 500) throw new Error('Entry limit reached (500).');
       const validate = kind === 'accounts' ? accountInput : proxyInput;
       const entry = { ...validate(input, existing), id: existing?.id || randomUUID() };
+      if (kind === 'accounts' && existing && (existing.username !== entry.username || existing.retailer !== entry.retailer)) delete data.targetSessions[entry.id];
       if (existing) data[kind][data[kind].indexOf(existing)] = entry;
       else data[kind].push(entry);
     });
@@ -102,9 +114,17 @@ class Vault {
     return this.mutate(data => {
       if (!data[kind].some(entry => entry.id === id)) throw new Error('Entry no longer exists.');
       data[kind] = data[kind].filter(entry => entry.id !== id);
+      if (kind === 'accounts') delete data.targetSessions[id];
     });
   }
   saveDiscord(input) { return this.mutate(data => { data.discord = discordSettings(input, data.discord); }); }
+  saveTargetSession(id, state) {
+    return this.mutate(data => {
+      if (!data.accounts.some(a => a.id === id && a.retailer === 'Target')) throw new Error('Choose a Target account.');
+      if (state === null) delete data.targetSessions[id];
+      else data.targetSessions[id] = targetState(state);
+    });
+  }
 }
 function validateAssignment(input, vault, retailer = 'Target') {
   const accountId = typeof input.accountId === 'string' ? input.accountId : '';
@@ -113,4 +133,4 @@ function validateAssignment(input, vault, retailer = 'Target') {
   if (proxyId && !vault.proxies.some(entry => entry.id === proxyId)) throw new Error('Choose a saved proxy.');
   return { accountId, proxyId };
 }
-module.exports = { Vault, accountInput, proxyInput, validateAssignment };
+module.exports = { Vault, accountInput, proxyInput, validateAssignment, targetState };

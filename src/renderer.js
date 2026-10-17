@@ -2,6 +2,7 @@ const $ = id => document.getElementById(id);
 let state = { items: [], events: [], accounts: [], proxies: [], discord: {} };
 let assigningRetailer = 'Target', discordDirty = false;
 const discordTests = new Set();
+let liveRequestBusy = false;
 const labels = { ready: 'Ready', paused: 'Paused', watching: 'Watching · demo', checking: 'Checkout · demo', complete: 'Complete · demo' };
 function text(tag, value, className) {
   const element = document.createElement(tag);
@@ -143,6 +144,7 @@ function renderResources() {
     $('discord-enabled').checked = Boolean(discord.enabled);
     $('discord-demos').checked = Boolean(discord.sendDemos);
   }
+  renderTarget();
 }
 function resourceDialog(kind, entry) {
   const form = $(`${kind}-form`); form.reset();
@@ -206,4 +208,35 @@ for (const kind of ['alerts', 'checkouts']) $('test-' + kind).onclick = async ()
   $('discord-result').textContent = ok ? `Discord accepted the ${kind} test message.` : '';
   if (!ok) $('discord-error').textContent = $('notice').textContent;
   discordTests.delete(kind); button.disabled = false;
+};
+function renderTarget() {
+  fillSelect('live-account', state.accounts.filter(a => a.retailer === 'Target'), 'Choose a Target account');
+  fillSelect('live-proxy', state.proxies, 'Direct / no proxy');
+  const accountId = $('live-account').value;
+  fillSelect('live-task', state.items.filter(item => item.retailer === 'Target' && item.accountId === accountId).map(item => ({ id: item.id, label: item.name })), 'Choose an assigned Target task');
+  const session = (state.targetBrowsers || []).find(s => s.accountId === accountId);
+  if (session) $('live-proxy').value = session.proxyId;
+  const saved = state.accounts.find(a => a.id === accountId)?.hasTargetSession;
+  $('live-status').textContent = session ? `${session.monitoring ? 'Monitoring · ' : ''}${session.status}` : `No browser open.${saved ? ' Saved encrypted browser state is available.' : ''}`;
+  const observation = session?.observation;
+  $('live-observation').textContent = observation ? `Observed: ${observation.availability} · Price: ${observation.price == null ? 'unknown' : '$' + observation.price.toFixed(2)}\nChecked ${new Date(observation.checkedAt).toLocaleString()}` : '';
+  $('live-proxy').disabled = Boolean(session) || liveRequestBusy;
+  for (const action of ['open', 'save', 'close', 'clear', 'check', 'monitor', 'stop', 'checkout']) {
+    const needsTask = ['check', 'monitor', 'checkout'].includes(action);
+    $('live-' + action).disabled = liveRequestBusy || !accountId || (action === 'open' ? Boolean(session) : action === 'clear' ? !saved && !session : !session)
+      || needsTask && !$('live-task').value;
+  }
+}
+$('live-account').onchange = () => { $('live-task').value = ''; $('live-error').textContent = ''; renderTarget(); };
+$('live-task').onchange = renderTarget;
+for (const action of ['open', 'save', 'close', 'clear', 'check', 'monitor', 'stop', 'checkout']) $('live-' + action).onclick = async () => {
+  if (action === 'clear' && !window.confirm('Close this browser and remove its saved Target session? The retail account entry is kept.')) return;
+  const accountId = $('live-account').value, taskId = $('live-task').value;
+  const command = { open: 'target-open', save: 'target-save-session', close: 'target-close', clear: 'target-clear-session',
+    check: 'target-check', monitor: 'target-monitor', stop: 'target-stop', checkout: 'target-checkout' }[action];
+  const payload = action === 'open' ? { accountId, proxyId: $('live-proxy').value } : ['check', 'monitor', 'checkout'].includes(action) ? { accountId, taskId } : accountId;
+  liveRequestBusy = true; $('live-error').textContent = ''; renderTarget();
+  const ok = await execute(command, payload);
+  if (!ok) $('live-error').textContent = $('notice').textContent;
+  liveRequestBusy = false; renderTarget();
 };

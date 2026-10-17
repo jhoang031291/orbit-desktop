@@ -21,6 +21,7 @@ function discordSettings(input, previous = {}) {
 function eventPayload(event) {
   if (!event || !['alerts', 'checkouts'].includes(event.kind)) throw new Error('Unknown Discord event.');
   const test = event.test === true;
+  if (event.live && (event.item?.retailer !== 'Target' || event.kind === 'checkouts' && event.stage !== 'review')) throw new Error('Unsupported live Discord event.');
   const payload = { allowed_mentions: { parse: [] }, embeds: [{
     title: test ? `TEST — ${event.kind} webhook` : event.kind === 'alerts' ? 'DEMO — Restock simulation' : 'DEMO — Checkout simulation',
     description: test ? 'Orbit Desktop webhook test. No stock was checked and no purchase was made.' : 'Simulated event only. No live stock was checked and no purchase was made.',
@@ -38,6 +39,11 @@ function eventPayload(event) {
       { name: 'Price limit (not observed price)', value: `$${item.price.toFixed(2)}` },
       { name: 'Quantity', value: String(item.quantity) }
     ];
+    if (event.live) {
+      payload.embeds[0].title = event.kind === 'alerts' ? 'Target — Availability observed' : 'Target — Purchase review opened';
+      payload.embeds[0].description = event.kind === 'alerts' ? 'Availability observed on the selected Target product page. Check shipping, store, and variant in the browser.' : 'Review and complete checkout in the Target browser. Orbit has not placed or confirmed an order.';
+      if (Number.isFinite(event.observation?.price)) payload.embeds[0].fields.push({ name: 'Observed product price (before checkout fees)', value: `$${event.observation.price.toFixed(2)}` });
+    }
   }
   return payload;
 }

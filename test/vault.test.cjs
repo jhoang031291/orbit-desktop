@@ -106,3 +106,14 @@ test('Discord webhooks stay encrypted and are never returned in snapshots', asyn
   await reload.saveDiscord({ alerts: '', enabled: true }); assert.equal(reload.data.discord.alerts, alerts);
   await reload.saveDiscord({ clearalerts: true }); assert.equal(reload.snapshot().discord.alertsConfigured, false);
 });
+test('Target saved browser cookies stay encrypted and never enter UI snapshots', async t => {
+  const vault = await fixture(t); await vault.save('accounts', account);
+  const id = vault.snapshot().accounts[0].id;
+  await vault.saveTargetSession(id, { cookies: [{ domain: '.target.com', name: 'session', value: 'secret-browser-cookie' }], origins: [] });
+  assert.equal(vault.snapshot().accounts[0].hasTargetSession, true);
+  assert(!JSON.stringify(vault.snapshot()).includes('secret-browser-cookie'));
+  assert(!(await fs.readFile(vault.file)).includes(Buffer.from('secret-browser-cookie')));
+  const reload = new Vault(vault.file, vault.crypto); await reload.load();
+  assert.equal(reload.data.targetSessions[id].cookies[0].value, 'secret-browser-cookie');
+  await reload.remove('accounts', id); assert.equal(reload.data.targetSessions[id], undefined);
+});
