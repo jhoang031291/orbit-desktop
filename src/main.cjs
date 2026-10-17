@@ -76,7 +76,7 @@ app.whenReady().then(async () => {
         if ([...targetRuntime.sessions.values()].some(s => s.taskId === id && (s.timer || s.busy))) throw new Error('Stop the Target live monitor before changing this task.');
       }
       switch (command) {
-        case 'target-open': await targetRuntime.open(data.accountId, data.proxyId || ''); break;
+        case 'target-open': await targetRuntime.open(data.accountId, data.proxyId || '', data.channel || 'chrome'); break;
         case 'target-save-session': await targetRuntime.saveSession(data); break;
         case 'target-close': await targetRuntime.close(data); break;
         case 'target-clear-session': await targetRuntime.close(data); await vault.saveTargetSession(data, null); break;

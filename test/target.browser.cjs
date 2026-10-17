@@ -11,7 +11,7 @@ function html({ disabled = false, data = productData, body = '' } = {}) {
   return `<h1>Example product</h1><p>${body}</p><script type="application/ld+json">${JSON.stringify(data)}</script><button data-test="shippingButton" ${disabled ? 'disabled' : ''}>Add to cart</button>`;
 }
 test('Playwright reads Target-shaped browser fixtures without making retailer requests', async t => {
-  const browser = await chromium.launch({ headless: true, ...(process.env.ORBIT_TEST_CHROMIUM ? { executablePath: process.env.ORBIT_TEST_CHROMIUM } : { channel: 'msedge' }) });
+  const browser = await chromium.launch({ headless: true, ...(process.env.ORBIT_TEST_CHROMIUM ? { executablePath: process.env.ORBIT_TEST_CHROMIUM } : { channel: 'chrome' }) });
   t.after(() => browser.close());
   const page = await browser.newPage(); let fixture = html();
   await page.route('**/*', route => route.fulfill({ status: 200, contentType: 'text/html', body: fixture }));
@@ -23,7 +23,7 @@ test('Playwright reads Target-shaped browser fixtures without making retailer re
   assert.equal((await inspectProduct(page, url)).availability, 'blocked');
 });
 test('browser workspace enforces account/proxy matching and never clicks a purchase control', async t => {
-  const browser = await chromium.launch({ headless: true, ...(process.env.ORBIT_TEST_CHROMIUM ? { executablePath: process.env.ORBIT_TEST_CHROMIUM } : { channel: 'msedge' }) });
+  const browser = await chromium.launch({ headless: true, ...(process.env.ORBIT_TEST_CHROMIUM ? { executablePath: process.env.ORBIT_TEST_CHROMIUM } : { channel: 'chrome' }) });
   t.after(() => browser.close());
   const context = await browser.newContext();
   await context.route('**/*', route => route.fulfill({ status: 200, contentType: 'text/html', body: html() + '<script>window.purchaseClicks=0;document.querySelector("button").onclick=()=>window.purchaseClicks++</script>' }));
@@ -42,7 +42,7 @@ test('browser workspace enforces account/proxy matching and never clicks a purch
   await manager.closeAll(); assert.equal(manager.snapshot().length, 0);
 });
 test('desktop Target controls render and send account-scoped commands', async t => {
-  const browser = await chromium.launch({ headless: true, ...(process.env.ORBIT_TEST_CHROMIUM ? { executablePath: process.env.ORBIT_TEST_CHROMIUM } : { channel: 'msedge' }) });
+  const browser = await chromium.launch({ headless: true, ...(process.env.ORBIT_TEST_CHROMIUM ? { executablePath: process.env.ORBIT_TEST_CHROMIUM } : { channel: 'chrome' }) });
   t.after(() => browser.close());
   const page = await browser.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -67,7 +67,7 @@ test('desktop Target controls render and send account-scoped commands', async t 
   await page.locator('#live-task').selectOption('task');
   await page.locator('#live-open').click();
   await page.waitForFunction(() => document.querySelector('#live-status').textContent.includes('Sign in in the browser'));
-  assert.deepEqual(await page.evaluate(() => window.calls.find(c => c.command === 'target-open').data), { accountId: 'account', proxyId: '' });
+  assert.deepEqual(await page.evaluate(() => window.calls.find(c => c.command === 'target-open').data), { accountId: 'account', proxyId: '', channel: 'chrome' });
   assert.equal(await page.locator('#live-check').isEnabled(), true);
   assert.deepEqual(errors, []);
 });

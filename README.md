@@ -2,13 +2,15 @@
 
 A Windows Electron task manager with account/proxy management, Discord webhooks, demo tasks for four US retailers, and a Target Playwright integration preview. Independent of Target, StellarAIO, and ValorAIO.
 
-## Target Playwright preview (v0.4.0)
+## Target Playwright preview (v0.4.1)
 
-**This is not verified end-to-end automatic checkout.** The integration opens an isolated, visible Microsoft Edge browser; you sign in on Target yourself, save encrypted browser state, and inspect or monitor the exact product. Purchase review returns you to the product in that browser. You add products and complete checkout manually. Orbit does not add items, submit payment, verify orders, or report a purchase as successful.
+**This is not verified end-to-end automatic checkout.** The integration opens an isolated, visible Chrome or Edge browser; you sign in on Target yourself, save encrypted browser state, and inspect or monitor the exact product. Purchase review returns you to the product in that browser. You add products and complete checkout manually. Orbit does not add items, submit payment, verify orders, or report a purchase as successful.
 
 ### Set up on Windows
 
-1. Install or update Microsoft Edge. The application uses Playwright's `msedge` channel; it does not download a separate browser or attach to your everyday browser profile.
+1. Install or update Google Chrome (the default) or Microsoft Edge. Select it in Target Live. Playwright uses its Chromium engine with the selected browser's installed stable channel; it does not download a separate browser or attach to your everyday browser profile.
+Close an account browser before changing its Browser selection. Switching browsers may help identify a browser/session issue, but it is not a guaranteed fix for a Target sign-in rejection. The app still uses an isolated automation-controlled profile rather than your everyday browser profile.
+
 2. Close the old app and run `OrbitDesktop-Setup.exe`. Launch Orbit Desktop from the Start menu. Existing records remain under the same Windows user.
 3. Under Accounts, save a Target entry. Its label/username identifies your configuration; the stored password is not autofilled.
 4. Create a Target task with the full product URL containing `/A-<TCIN>`, the exact variant, a price limit, an account, and a proxy or Direct.
@@ -43,6 +45,6 @@ The four-retailer demo task manager has search, limits, start/stop/delete, task 
 
 Install current Node.js LTS, then run `npm ci` and `npm start`. Build the Windows installer and ZIP with `npm run build:win`. The app is unsigned. The ZIP must be extracted in full, with all files kept together.
 
-`npm test` runs unit tests. `npm run test:target-browser` runs Playwright fixture and UI tests using installed Edge on Windows. For Linux development with an installed Chromium, set `ORBIT_TEST_CHROMIUM` to its executable path. Tests intercept Target requests and do not sign in, post Discord messages, add cart items, or purchase anything. Windows CI runs both sets and checks that the packaged application includes its unpacked Playwright runtime. Windows credential protection and authenticated Target behavior need manual device validation.
+`npm test` runs unit tests. `npm run test:target-browser` runs Playwright fixture and UI tests using installed Google Chrome on Windows. For Linux development with an installed Chromium, set `ORBIT_TEST_CHROMIUM` to its executable path. Tests intercept Target requests and do not sign in, post Discord messages, add cart items, or purchase anything. Windows CI runs both sets and checks that the packaged application includes its unpacked Playwright runtime. Windows credential protection and authenticated Target behavior need manual device validation.
 
 Source and releases: https://github.com/jhoang031291/orbit-desktop

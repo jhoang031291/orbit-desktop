@@ -12,22 +12,23 @@ class TargetBrowser {
     this.sessions = new Map(); this.closing = false;
   }
   snapshot() {
-    return [...this.sessions].map(([accountId, s]) => ({ accountId, proxyId: s.proxyId, status: s.status,
+    return [...this.sessions].map(([accountId, s]) => ({ accountId, proxyId: s.proxyId, channel: s.channel, status: s.status,
       monitoring: Boolean(s.timer), taskId: s.taskId || '', observation: s.observation || null }));
   }
   session(id) { const s = this.sessions.get(id); if (!s || !s.page || s.page.isClosed()) throw new Error('Open the Target browser for this account first.'); return s; }
   publish() { this.update(); }
-  async open(accountId, proxyId = '') {
+  async open(accountId, proxyId = '', channel = 'chrome') {
+    if (!['chrome', 'msedge'].includes(channel)) throw new Error('Choose Google Chrome or Microsoft Edge.');
     if (this.sessions.has(accountId)) throw new Error('Close the existing account browser before reopening it or changing proxies.');
     const account = this.vault.data.accounts.find(a => a.id === accountId && a.retailer === 'Target');
     if (!account) throw new Error('Choose a saved Target account.');
     if (!this.vault.available() || this.vault.locked) throw new Error('Windows credential protection is required for Target sessions.');
     const proxy = proxyId ? this.vault.data.proxies.find(p => p.id === proxyId) : undefined;
     if (proxyId && !proxy) throw new Error('The assigned proxy no longer exists.');
-    const s = { proxyId, status: 'Opening', browser: null, timer: null, busy: false, stopped: false };
+    const s = { proxyId, channel, status: 'Opening', browser: null, timer: null, busy: false, stopped: false };
     this.sessions.set(accountId, s); this.publish();
     try {
-      s.browser = await this.launch({ channel: 'msedge', headless: false, chromiumSandbox: true, proxy: proxyOptions(proxy) });
+      s.browser = await this.launch({ channel, headless: false, chromiumSandbox: true, proxy: proxyOptions(proxy) });
       if (this.closing || s.stopped) { await s.browser.close(); throw new Error('Browser opening was cancelled.'); }
       s.context = await s.browser.newContext({ storageState: this.vault.data.targetSessions?.[accountId] });
       s.context.setDefaultTimeout(12000);
@@ -37,7 +38,7 @@ class TargetBrowser {
       s.status = 'Sign in in the browser, then save session'; this.publish();
     } catch {
       await s.browser?.close().catch(() => {}); if (this.sessions.get(accountId) === s) this.sessions.delete(accountId); this.publish();
-      throw new Error('Target browser could not open. Install or update Microsoft Edge and check the selected proxy. No session was saved.');
+      throw new Error(`Target browser could not open. Install or update ${channel === 'chrome' ? 'Google Chrome' : 'Microsoft Edge'} and check the selected proxy. No session was saved.`);
     }
   }
   async saveSession(id) {

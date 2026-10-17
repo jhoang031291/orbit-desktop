@@ -2,7 +2,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { targetURL, interpretPage } = require('../src/target-page.cjs');
 const { targetState } = require('../src/vault.cjs');
-const { proxyOptions } = require('../src/target-browser.cjs');
+const { proxyOptions, TargetBrowser } = require('../src/target-browser.cjs');
+const { EventEmitter } = require('node:events');
 const { eventPayload } = require('../src/discord.cjs');
 const url = 'https://www.target.com/p/example/-/A-12345678';
 const item = { name: 'Example', retailer: 'Target', url, price: 30, quantity: 1 };
@@ -42,4 +43,23 @@ test('live checkout messages describe a review, never a confirmed purchase', () 
   assert.match(message.embeds[0].title, /review/);
   assert.match(message.embeds[0].description, /has not placed or confirmed/);
   assert.throws(() => eventPayload({ kind: 'checkouts', live: true, stage: 'success', item }));
+});
+test('Target browser defaults to installed Chrome and allows an explicit Edge choice', async () => {
+  const calls = [];
+  const manager = new TargetBrowser({ vault: { available: () => true, data: { accounts: [{ id: 'account', retailer: 'Target' }], proxies: [], targetSessions: {} } },
+    update: () => {}, log: () => {}, onEvent: () => {}, launch: async options => {
+      calls.push(options);
+      const browser = new EventEmitter();
+      browser.newContext = async () => ({ setDefaultTimeout() {}, newPage: async () => ({ goto: async () => {}, isClosed: () => false }) });
+      browser.close = async () => browser.emit('disconnected');
+      return browser;
+    } });
+  await manager.open('account');
+  assert.equal(calls[0].channel, 'chrome'); assert.equal(calls[0].chromiumSandbox, true);
+  assert.equal(manager.snapshot()[0].channel, 'chrome');
+  await manager.close('account');
+  await manager.open('account', '', 'msedge'); assert.equal(calls[1].channel, 'msedge');
+  await manager.close('account');
+  await assert.rejects(manager.open('account', '', 'unknown'), /Choose Google Chrome/);
+  assert.equal(calls.length, 2);
 });
